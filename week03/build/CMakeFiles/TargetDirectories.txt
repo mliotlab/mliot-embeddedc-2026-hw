@@ -1,0 +1,2 @@
+C:/Users/DELL/mliot-embeddedc-2026-hw/week03/build/CMakeFiles/edit_cache.dir
+C:/Users/DELL/mliot-embeddedc-2026-hw/week03/build/CMakeFiles/rebuild_cache.dir

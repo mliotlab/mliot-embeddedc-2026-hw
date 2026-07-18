@@ -1,4 +1,4 @@
-// HW02: KIẾN TRÚC PHẦN MỀM VÀ QUẢN LÝ BỘ NHỚ SMART BIKE
+// HW02: KI?N TR�C PH?N M?M V� QU?N L? B? NH? SMART BIKE
 
 #include <stdio.h>
 #include <stdint.h>
@@ -8,12 +8,12 @@
 typedef union {
     uint16_t raw_value;
     struct {
-        // HỌC VIÊN BẮT ĐẦU VIẾT CODE TỪ ĐÂY
-
-
-
-
-        // HỌC VIÊN KẾT THÚC VIẾT CODE
+        // H?C VI�N B?T �?U VI?T CODE T? ��Y
+        uint16_t PWR_ON       : 1;  // Bit [0]
+        uint16_t ASSIST_LEVEL : 2;  // Bit [2:1]
+        uint16_t LIGHT_BRIGHT : 4;  // Bit [6:3]
+        uint16_t RESERVED     : 9;  // Bit [15:7]
+        // H?C VI�N K?T TH�C VI?T CODE
     } fields;
 } Bike_Status_t;
 
@@ -30,12 +30,10 @@ void drive_sport(void) {
     printf("Bike Mode: SPORT.\n");
 }
 
-// HỌC VIÊN BẮT ĐẦU VIẾT CODE TỪ ĐÂY
-
-
-
-
-// HỌC VIÊN KẾT THÚC VIẾT CODE
+// H?C VI�N B?T �?U VI?T CODE T? ��Y
+typedef void (*Drive_Func_t)(void);
+Drive_Func_t drive_modes[3] = {drive_eco, drive_normal, drive_sport};
+// H?C VI�N K?T TH�C VI?T CODE
 
 
 // TASK 3: ARCHITECTURE CALLBACKS
@@ -43,12 +41,13 @@ void drive_sport(void) {
 void Battery_Monitor(void (*overheat_cb)(void)) {
     int battery_temp = 45; 
     
-    // HỌC VIÊN BẮT ĐẦU VIẾT CODE TỪ ĐÂY
-
-
-
-
-    // HỌC VIÊN KẾT THÚC VIẾT CODE
+    // H?C VI�N B?T �?U VI?T CODE T? ��Y
+    if (battery_temp > 40) {
+        if (overheat_cb != NULL) {
+            overheat_cb();
+        }
+    }
+    // H?C VI�N K?T TH�C VI?T CODE
 }
 
 void Critical_Battery_Handler(void) {
@@ -62,16 +61,15 @@ const char BIKE_MODEL[] = "E-Bike X2026";
 uint32_t total_odometer = 0;             
 
 void crash_simulation(void) {
-    // HỌC VIÊN BẮT ĐẦU VIẾT CODE TỪ ĐÂY
-
-
-
-
-    // HỌC VIÊN KẾT THÚC VIẾT CODE
+    // H?C VI�N B?T �?U VI?T CODE T? ��Y
+    volatile uint8_t stack_burner[1024]; // T?o m?ng c?c b? �? ti�u t?n Stack nhanh h�n
+    stack_burner[0] = 0;
+    crash_simulation(); // G?i �? quy v� h?n t?o Stack Overflow
+    // H?C VI�N K?T TH�C VI?T CODE
 }
 
 
-// HÀM MAIN KIỂM TRA (Học viên giữ nguyên để chạy thử nghiệm)
+// H�M MAIN KI?M TRA (H?c vi�n gi? nguy�n �? ch?y th? nghi?m)
 
 int main() {
     Bike_Status_t my_bike;
@@ -84,12 +82,12 @@ int main() {
 
     // 2. Test Task 2
     printf("ENGINE CONTROLLING: \n");
-    // HỌC VIÊN BẮT ĐẦU VIẾT CODE TỪ ĐÂY
-
-
-
-
-    // HỌC VIÊN KẾT THÚC VIẾT CODE
+    // H?C VI�N B?T �?U VI?T CODE T? ��Y
+    if (my_bike.fields.ASSIST_LEVEL < 3) {
+        drive_modes[my_bike.fields.ASSIST_LEVEL]();
+    }
+    printf("\n");
+    // H?C VI�N K?T TH�C VI?T CODE
 
     // 3. Test Task 3
     Battery_Monitor(Critical_Battery_Handler);
@@ -102,7 +100,7 @@ int main() {
     printf("total_odometer (RAM/.bss):  %p\n", (void*)&total_odometer);
     printf("current_speed (RAM/Stack):  %p\n", (void*)&current_speed);
 
-    // Bỏ comment dòng dưới để chạy thử bài Crash Lab
+    // B? comment d?ng d�?i �? ch?y th? b�i Crash Lab
     // crash_simulation();
 
     return 0;

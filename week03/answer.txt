@@ -1,0 +1,93 @@
+================================================================================
+BÀI LÀM HW03: TỰ ĐỘNG HÓA QUY TRÌNH BUILD VÀ FLASH FIRMWARE QUA DÒNG LỆNH
+================================================================================
+
+--------------------------------------------------------------------------------
+TASK 1: PHÂN TÍCH TRÌNH TỰ VÀ CÔNG DỤNG CỦA TOOLCHAIN
+--------------------------------------------------------------------------------
+1.1. Công dụng chính của 4 công cụ:
+- CMake: Công cụ quản lý và cấu hình dự án ở mức cao. Nó không trực tiếp biên dịch
+  code mà tạo ra các file build (như Makefile hoặc Ninja build files) dựa trên
+  tệp cấu hình CMakeLists.txt độc lập với nền tảng.
+- Ninja: Bộ sinh và thực thi build (Build System) tập trung vào tốc độ. Nó đọc các
+  file cấu hình do CMake sinh ra để điều phối, chạy các lệnh biên dịch song song
+  và quản lý build tăng dần một cách tối ưu.
+- Compiler (arm-none-eabi-gcc): Trình biên dịch chéo (Cross-compiler). Nhiệm vụ
+  chính là dịch mã nguồn ngôn ngữ bậc cao (C/C++) sang mã máy (Mã đối tượng .o)
+  dành riêng cho kiến trúc ARM Cortex-M của STM32.
+- STM32_Programmer_CLI: Công cụ giao diện dòng lệnh của STMicroelectronics dùng
+  để tương tác trực tiếp với phần cứng chip STM32 thông qua mạch nạp (như ST-Link).
+  Nhiệm vụ là nạp (flash), xóa, đọc và reset vi điều khiển.
+
+1.2. Trình tự logic khi kết hợp 4 công cụ:
+[Mã nguồn C] ---> (1) CMake ---> (2) Ninja ---> (3) Compiler ---> (4) STM32_Programmer_CLI ---> [Mạch cứng STM32]
+
+- Bước 1: CMake chạy đầu tiên để kiểm tra môi trường, trình biên dịch và sinh ra
+  các file script build tối ưu cho Ninja.
+- Bước 2: Ninja chạy tiếp theo, đọc file do CMake tạo ra để xác định thứ tự biên
+  dịch các file nào trước, file nào sau để tối ưu thời gian.
+- Bước 3: Ninja gọi Compiler (arm-none-eabi-gcc) để thực hiện dịch các file .c
+  thành file .o, sau đó gọi Linker để liên kết các file .o thành file firmware
+  cuối cùng (.elf, .bin).
+- Bước 4: STM32_Programmer_CLI chạy cuối cùng, lấy file nạp dạng nhị phân (.bin)
+  được sinh ra từ bước 3 để truyền dữ liệu và nạp thẳng xuống bộ nhớ Flash của chip.
+
+--------------------------------------------------------------------------------
+TASK 2: PHÂN BỔ VAI TRÒ CỦA LINKER VÀ NINJA
+--------------------------------------------------------------------------------
+2.1. Tại sao cần Linker và sự khác biệt cốt lõi:
+- Tại sao cần Linker: Mỗi file .o chỉ chứa mã máy độc lập của riêng file .c đó.
+  Các hàm, biến gọi chéo giữa các file lúc này chỉ là các địa chỉ tạm thời (chưa
+  được xác định cụ thể trên MCU). Chúng ta chưa thể nạp xuống chip vì chip không
+  hiểu cấu trúc tổ chức gom cụm và không biết thực thi từ đâu. Linker xuất hiện để
+  "gắn kết" tất cả các file .o lại, giải quyết các tham chiếu chéo và định vị
+  chính xác các đoạn mã/dữ liệu vào vùng nhớ phần cứng cụ thể (Flash, RAM).
+- Điểm khác biệt cốt lõi:
+  + Các file .o là các khối mã máy rời rạc, chứa các địa chỉ tương đối và thông
+    tin debug, cấu trúc phụ thuộc vào trình biên dịch.
+  + File final (.bin) là file ảnh nhị phân thuần túy (Raw Binary Image). Nó chứa
+    chính xác từng byte dữ liệu liên tục sẽ được ghi trực tiếp vào bộ nhớ Flash
+    của MCU, không còn thông tin thừa, sẵn sàng để CPU đọc và chạy.
+
+2.2. Vai trò của Incremental Build và cơ chế của Ninja:
+- Vai trò của Incremental Build: Giúp tiết kiệm tối đa thời gian bằng cách chỉ
+  biên dịch lại những file thực sự có sự thay đổi thay vì phải biên dịch lại từ
+  đầu toàn bộ dự án (Clean Build). Đối với dự án lớn, việc này giảm thời gian chờ
+  từ vài phút xuống còn vài giây.
+- Cơ chế của Ninja: Ninja dựa vào mốc thời gian sửa đổi file (Timestamp) và sơ đồ
+  phụ thuộc (Dependency Graph) được CMake dựng sẵn. Khi kích hoạt lệnh build, Ninja
+  sẽ so sánh Timestamp của file nguồn (.c) với Timestamp của file đối tượng (.o)
+  được sinh ra trước đó. Nếu `Timestamp(.c) > Timestamp(.o)`, chứng tỏ file .c vừa
+  bị sửa đổi và Ninja sẽ phát lệnh biên dịch lại file đó và cập nhật liên kết.
+
+--------------------------------------------------------------------------------
+TASK 3: PHÂN TÍCH PHÂN VÙNG VMA/LMA VÀ STARTUP CODE
+--------------------------------------------------------------------------------
+3.1. Phân biệt LMA và VMA của vùng .data:
+- LMA (Load Memory Address): Là địa chỉ lưu trữ thực tế ban đầu của dữ liệu khi
+  nạp vào chip. Ở đoạn mã trên, LMA của `.data` nằm ở FLASH (`AT> FLASH`). Điều
+  này là bắt buộc vì RAM là bộ nhớ biến đổi (mất dữ liệu khi mất điện), các giá trị
+  khởi tạo của biến toàn cục phải được lưu trữ an toàn trong bộ nhớ Flash bền vững.
+- VMA (Virtual/Runtime Memory Address): Là địa chỉ thực thi của dữ liệu khi chương
+  trình chạy. Ở đoạn mã trên, VMA của `.data` nằm ở RAM (`>RAM`). Khi CPU thực hiện
+  phép tính hoặc đọc/ghi biến toàn cục trong lúc runtime, nó sẽ truy xuất tới địa
+  chỉ thuộc RAM này để đảm bảo tốc độ cao và có thể ghi đè giá trị được.
+=> Phân vùng `.data` bắt buộc phải có cả 2 địa chỉ vì dữ liệu cần "sống sót" ở Flash
+   khi mất điện (LMA) nhưng phải chạy ở RAM để có thể thay đổi giá trị (VMA).
+
+3.2. Hệ quả nếu Reset_Handler quên sao chép dữ liệu từ _sidata sang _sdata:
+- Nếu Startup Code quên sao chép dữ liệu, vùng nhớ `.data` trên RAM sẽ chứa các giá
+  trị ngẫu nhiên (rác) hoặc toàn bộ là giá trị mặc định của RAM lúc khởi động.
+- Khi đó, tất cả các biến toàn cục hoặc biến tĩnh (static) có khởi tạo giá trị ban đầu
+  (ví dụ: `int status = 1;` hoặc `uint8_t tx_buffer[3] = {0xA, 0xB, 0xC};`) sẽ bị
+  sai lệch giá trị hoàn toàn. Chương trình dựa vào điều kiện của các biến này để logic
+  chạy sẽ bị lỗi nghiêm trọng hoặc vi điều khiển sẽ bị rơi vào trạng thái HardFault.
+
+--------------------------------------------------------------------------------
+TASK 4: KHAI BÁO CÁC CÂU LỆNH ĐIỀU KHIỂN HỆ THỐNG
+--------------------------------------------------------------------------------
+4.1. Lệnh CMake để cấu hình dự án dùng bộ sinh Ninja xuất ra thư mục 'build':
+cmake -G Ninja -B build
+
+4.2. Lệnh gọi Ninja để tiến hành biên dịch dự án:
+ninja -C build
